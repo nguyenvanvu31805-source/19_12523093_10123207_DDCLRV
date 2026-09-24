@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List, Optional
 import pandas as pd
 from pydantic import BaseModel, Field
 
@@ -104,3 +104,16 @@ class PredictResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
+
+
+class ModelInfoResponse(BaseModel):
+    model_name: str
+    model_version: str
+    task: str
+    target: str
+    metrics: Dict[str, float]
+    best_parameters: Optional[Dict[str, Any]] = None
+    dataset: Optional[Dict[str, Any]] = None
+    libraries: Optional[Dict[str, str]] = None
+    training_date: Optional[str] = None
+

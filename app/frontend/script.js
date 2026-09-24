@@ -1,9 +1,10 @@
 /**
  * Frontend JavaScript cho ứng dụng Dự đoán chất lượng rượu vang
- * Giao tiếp trực tiếp với Backend API qua HTTP POST http://127.0.0.1:5000/predict
+ * Giao tiếp với Backend API qua relative path cùng origin (Nginx Reverse Proxy)
  */
 
-const BACKEND_URL = "http://127.0.0.1:5000";
+// Sử dụng relative path cùng origin để hoạt động trong mọi môi trường (local, LAN, public tunnel)
+const API_BASE_URL = "/api";
 
 // Bộ 11 giá trị mẫu chuẩn theo yêu cầu đồ án
 const SAMPLE_DATA = {
@@ -90,12 +91,18 @@ document.addEventListener("DOMContentLoaded", () => {
     // 2. Chuyển trạng thái đang dự đoán (loading)
     setLoading(true);
 
+    // 2b. Sinh request_id duy nhất cho request (dùng crypto.randomUUID hoặc fallback)
+    const requestId = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+      ? crypto.randomUUID()
+      : "req-" + Date.now() + "-" + Math.random().toString(36).substring(2, 10);
+
     try {
-      // 3. Gửi HTTP POST request sang Backend
-      const response = await fetch(`${BACKEND_URL}/predict`, {
+      // 3. Gửi HTTP POST request sang Backend kèm X-Request-ID
+      const response = await fetch(`${API_BASE_URL}/predict`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "X-Request-ID": requestId
         },
         body: JSON.stringify(payload)
       });

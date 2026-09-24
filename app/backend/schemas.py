@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 # Danh sách đúng 11 features theo đúng thứ tự huấn luyện
@@ -92,3 +92,15 @@ class PredictResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
+
+
+class HistoryItem(BaseModel):
+    timestamp: str
+    input: Dict[str, float]
+    prediction: float
+
+
+class HistoryResponse(BaseModel):
+    items: List[HistoryItem]
+    count: int
+

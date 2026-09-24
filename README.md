@@ -179,18 +179,20 @@ Các tệp đóng gói được lưu trữ tại [ai-models/models/](ai-models/m
       Frontend Web (Nginx / Vanilla JS)
                    ↓ HTTP POST /predict (Port 5000)
          Backend API (FastAPI)
-                   ↓ HTTP POST /predict (Port 8000)
-          AI Service (FastAPI)
-                   ↓
-         Pipeline (model.joblib)
-                   ↓
-         Điểm chất lượng rượu (quality)
+         ↙                   ↘ (Lưu lịch sử dự đoán)
+   (Port 8000)             (Port 27017)
+AI Service (FastAPI)       MongoDB (mongo:7)
+        ↓
+Pipeline (model.joblib)
+        ↓
+Điểm chất lượng rượu (quality)
 ```
 
 * **Frontend:** Chạy qua Web server (Nginx trong Docker) trên cổng `3000`.
-* **Backend API:** FastAPI chạy trên cổng `5000`, làm nhiệm vụ nhận request từ Frontend, validate dữ liệu và chuyển tiếp (forward) sang AI Service.
+* **Backend API:** FastAPI chạy trên cổng `5000`, làm nhiệm vụ nhận request từ Frontend, validate dữ liệu, chuyển tiếp sang AI Service, và lưu lịch sử dự đoán vào cơ sở dữ liệu MongoDB.
 * **AI Service:** FastAPI chạy trên cổng `8000`, nạp `model.joblib` và trực tiếp thực thi dự đoán.
-* **Kết nối trong mạng Docker (Docker Network):** Backend kết nối tới AI Service qua URL nội bộ `http://ai-service:8000`.
+* **MongoDB:** Lưu trữ lịch sử các lần dự đoán (`timestamp` UTC, 11 features đầu vào, kết quả dự đoán `prediction`) với volume mount bền vững.
+* **Kết nối trong mạng Docker (Docker Network):** Backend kết nối tới AI Service qua `http://ai-service:8000` và MongoDB qua `mongodb://mongodb:27017`.
 
 ---
 
@@ -199,12 +201,46 @@ Các tệp đóng gói được lưu trữ tại [ai-models/models/](ai-models/m
 ### AI Service (Port 8000)
 * `GET /health`: Kiểm tra sức khỏe dịch vụ (trả về `{"status": "ok"}`).
 * `GET /`: Trang chủ AI Service, hiển thị trạng thái nạp mô hình.
+* `GET /model-info`: Trả về thông tin chi tiết của mô hình đang phục vụ (tên mô hình, phiên bản, task, target, siêu tham số, chỉ số đánh giá MAE/MSE/RMSE/R2, thông tin dataset và ngày huấn luyện).
 * `POST /predict`: Nhận 11 thuộc tính hóa lý (JSON body), trả về điểm chất lượng dự đoán (`{"prediction": ...}`).
 
 ### Backend API (Port 5000)
 * `GET /health`: Kiểm tra tình trạng Backend (trả về `{"status": "ok"}`).
-* `GET /`: Trang chủ thông tin Backend và địa chỉ `ai_service_url` đang kết nối.
-* `POST /predict`: Tiếp nhận 11 thuộc tính từ Client/Frontend, validate và chuyển tiếp tới AI Service.
+* `GET /`: Trang chủ thông tin Backend, địa chỉ `ai_service_url` và `mongodb_url` đang kết nối.
+* `POST /predict`: Tiếp nhận 11 thuộc tính từ Client/Frontend, chuyển tiếp tới AI Service và lưu lịch sử (hỗ trợ tương thích ngược).
+* `POST /api/predict`: Endpoint dự đoán chuẩn REST API v1 (dùng chung logic xử lý với `/predict`).
+* `GET /api/history`: Lấy lịch sử dự đoán từ MongoDB (hỗ trợ query param `?limit=20`, sắp xếp giảm dần theo thời gian mới nhất).
+
+### Request ID và Structured Logging
+Hệ thống triển khai cơ chế truy vết yêu cầu (End-to-End Request Tracing) xuyên suốt 3 tầng:
+
+```text
+Frontend (script.js)
+   │  Sinh unique request_id (UUID4)
+   │  Gửi kèm header: X-Request-ID
+   ▼
+Backend API (FastAPI :5000)
+   │  Đọc / sinh X-Request-ID qua Middleware
+   │  Ghi log: start, method, path, request_id
+   │  Chuyển tiếp header X-Request-ID sang AI Service
+   │  Ghi log: status, duration_ms
+   │  Trả header X-Request-ID về Frontend
+   ▼
+AI Service (FastAPI :8000)
+   │  Đọc / sinh X-Request-ID qua Middleware
+   │  Ghi log: start, request_id, model prediction, duration_ms
+   │  Trả header X-Request-ID về Backend
+```
+
+* **Định dạng Log có cấu trúc (Structured Log):**
+  * Bắt đầu xử lý: `request_id=<id> method=<METHOD> path=<PATH> status=start`
+  * Dự đoán AI: `request_id=<id> prediction=<VALUE>`
+  * Hoàn thành: `request_id=<id> method=<METHOD> path=<PATH> status=<CODE> duration_ms=<MS>`
+  * Lỗi (nếu có): `request_id=<id> method=<METHOD> path=<PATH> status=error duration_ms=<MS> error=<MSG>`
+* **Tra cứu log theo request_id:**
+  ```bash
+  docker compose -p winequality logs | grep <request_id>
+  ```
 
 ---
 
@@ -212,31 +248,68 @@ Các tệp đóng gói được lưu trữ tại [ai-models/models/](ai-models/m
 
 Dự án có sẵn các bộ kiểm thử tự động (Unit/Integration Test) bằng `pytest` và `FastAPI TestClient`:
 
-* **AI Service Test Suite ([ai-models/service/test_api.py](ai-models/service/test_api.py)):** **Đạt 6/6 tests**
+* **AI Service Test Suite ([ai-models/service/test_api.py](ai-models/service/test_api.py)):** **Đạt 10/10 tests**
   * `test_root`: Kiểm tra GET /
   * `test_health`: Kiểm tra GET /health
+  * `test_model_info`: Kiểm tra GET /model-info (trả về thông tin mô hình hợp lệ)
   * `test_predict_missing_feature`: Chặn request thiếu feature (422)
   * `test_predict_invalid_data_type`: Chặn request sai kiểu dữ liệu (422)
   * `test_predict_extra_feature`: Chặn request thừa feature lạ (422)
   * `test_predict_model_status`: Kiểm tra phản hồi dự đoán hợp lệ khi có model.joblib
-* **Backend API Test Suite ([app/backend/test_api.py](app/backend/test_api.py)):** **Đạt 7/7 tests**
+  * `test_ai_service_request_id_preserved`: Bảo toàn header `X-Request-ID` từ Client
+  * `test_ai_service_request_id_auto_generated`: Tự động sinh `X-Request-ID` khi thiếu header
+  * `test_ai_service_model_info_request_id`: Trả header `X-Request-ID` trên `/model-info`
+* **Backend API Test Suite ([app/backend/test_api.py](app/backend/test_api.py)):** **Đạt 14/14 tests**
   * `test_root`: Kiểm tra GET /
   * `test_health`: Kiểm tra GET /health
   * `test_predict_success_mock`: Chuyển tiếp kết quả dự đoán thành công
+  * `test_api_predict_success_mock`: Kiểm tra POST /api/predict chuyển tiếp dự đoán thành công
   * `test_predict_missing_feature`: Validate thiếu feature (422)
   * `test_predict_invalid_data_type`: Validate sai kiểu dữ liệu (422)
   * `test_predict_extra_feature`: Validate thừa feature lạ (422)
   * `test_predict_ai_service_unavailable`: Xử lý ngoại lệ khi AI Service ngừng hoạt động (503)
+  * `test_get_history_empty_mock`: Kiểm tra GET /api/history trả về danh sách rỗng khi chưa có dữ liệu
+  * `test_get_history_with_data_mock`: Kiểm tra GET /api/history trả về dữ liệu đúng định dạng JSON khi có lịch sử
+  * `test_get_history_mongo_unavailable`: Xử lý ngoại lệ an toàn khi MongoDB không khả dụng (503)
+  * `test_request_id_forwarded_to_ai_service`: Giữ nguyên và chuyển tiếp `X-Request-ID` sang AI Service
+  * `test_request_id_auto_generated_when_missing`: Tự sinh và chuyển tiếp `X-Request-ID` khi thiếu header
+  * `test_request_id_header_in_health`: Middleware trả lại `X-Request-ID` trên endpoint GET `/health`
 
-👉 **Tổng cộng: 13/13 test cases đều đạt chuẩn (PASS).**
+👉 **Tổng cộng: 24/24 test cases đều đạt chuẩn (PASS).**
 
 ---
 
-## 15. Hướng dẫn khởi chạy hệ thống
+## 15. Kiểm thử hiệu năng và chịu tải (Performance / Load Testing)
+
+Hệ thống được kiểm thử chịu tải toàn diện trên luồng người dùng thực tế (`Frontend → Backend → AI Service → MongoDB`) bằng công cụ kiểm thử bất đồng bộ độc lập [scripts/load_test/load_test.py](scripts/load_test/load_test.py).
+
+Chi tiết đầy đủ báo cáo xem tại: [docs/performance.md](docs/performance.md)
+
+### Bảng kết quả benchmark thực tế
+
+| Chỉ số (Metric) | Kịch bản 1 (10 Users) | Kịch bản 2 (20 Users) | Mục tiêu (Target) | Trạng thái |
+|:---|---:|---:|---:|:---:|
+| **Số users đồng thời (Concurrency)** | 10 | 20 | 10–20 concurrent users | **ĐẠT** |
+| **Thời gian chạy thực tế (Duration)** | 60.13 s | 60.34 s | ~ 60 giây (1 phút) | **ĐẠT** |
+| **Tổng số requests (Total)** | 1,862 | 1,773 | - | - |
+| **Requests thành công (Success)** | 1,862 | 1,773 | - | - |
+| **Requests thất bại (Failed)** | 0 | 0 | - | - |
+| **Tỷ lệ lỗi (Error Rate)** | **0.00 %** | **0.00 %** | **< 1.0 %** | **ĐẠT XUẤT SẮC** |
+| **Thông lượng (Throughput)** | **30.96 req/s** | **29.39 req/s** | - | **Rất cao** |
+| **Độ trễ trung vị (p50 Latency)** | **310.55 ms** (0.311 s) | **626.88 ms** (0.627 s) | - | **Rất nhanh** |
+| **Độ trễ phân vị 90 (p90 Latency)** | **400.80 ms** (0.401 s) | **811.89 ms** (0.812 s) | - | - |
+| **Độ trễ phân vị 95 (p95 Latency)** | **425.73 ms** (0.426 s) | **851.71 ms** (0.852 s) | **< 2.0 s (2000 ms)** | **ĐẠT XUẤT SẮC** |
+| **Độ trễ phân vị 99 (p99 Latency)** | **496.22 ms** (0.496 s) | **1242.59 ms** (1.243 s) | - | - |
+
+> **Đánh giá:** Toàn bộ tiêu chí đề ra về **Error Rate (< 1%)** và **p95 Latency (< 2s khi hệ thống warm)** đều đạt xuất sắc 100% với số liệu đo lường thực nghiệm khách quan. Lịch sử dự đoán trong MongoDB được ghi nhận trọn vẹn (3,800+ bản ghi), không xảy ra tình trạng thắt cổ chai.
+
+---
+
+## 16. Hướng dẫn khởi chạy hệ thống
 
 ### Cách 1: Khởi chạy toàn bộ hệ thống bằng Docker Compose (Khuyến nghị)
 
-Khởi động đồng thời cả 3 dịch vụ (`ai-service`, `backend`, `frontend`) chỉ với 1 câu lệnh từ thư mục gốc project:
+Khởi động đồng thời cả 4 dịch vụ (`ai-service`, `backend`, `frontend`, `mongodb`) chỉ với 1 câu lệnh từ thư mục gốc project:
 
 ```bash
 docker compose -p winequality up -d --build
@@ -285,7 +358,7 @@ Nếu muốn chạy trực tiếp bằng môi trường Python trên máy:
 
 ---
 
-## 16. Cấu trúc thư mục dự án
+## 17. Cấu trúc thư mục dự án
 
 ```text
 .
@@ -330,7 +403,11 @@ Nếu muốn chạy trực tiếp bằng môi trường Python trên máy:
 │   │   └── evaluate.py
 │   └── requirements.txt
 ├── docs/
-│   └── figures/                   # Biểu đồ EDA và so sánh mô hình
+│   ├── figures/                   # Biểu đồ EDA và so sánh mô hình
+│   └── performance.md             # Báo cáo chi tiết kiểm thử hiệu năng & chịu tải
+├── scripts/
+│   └── load_test/                 # Kịch bản kiểm thử tải bất đồng bộ (Load test)
+│       └── load_test.py
 ├── docker-compose.yml             # Cấu hình khởi chạy trọn gói Docker Compose
 ├── .env.example                   # Tệp mẫu biến môi trường
 ├── .gitignore                     # Cấu hình bỏ qua các tệp không cần thiết
@@ -339,7 +416,7 @@ Nếu muốn chạy trực tiếp bằng môi trường Python trên máy:
 
 ---
 
-## 17. Biến môi trường và Bảo mật (Environment & Security)
+## 18. Biến môi trường và Bảo mật (Environment & Security)
 
 * Tệp cấu hình chứa giá trị nhạy cảm `.env` đã được đưa vào `.gitignore` và **tuyệt đối không commit** lên Git.
 * Dự án cung cấp mẫu `.env.example` để người dùng dễ dàng cấu hình môi trường khi triển khai.

@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from main import MODEL_PATH, app
+from main import METADATA_PATH, MODEL_PATH, app
 
 client = TestClient(app)
 
@@ -81,6 +81,54 @@ def test_predict_model_status():
         assert "model.joblib" in data["detail"]
 
 
+def test_model_info():
+    """Kiểm tra endpoint GET /model-info trả về HTTP 200, đúng định dạng JSON và đầy đủ thông tin model."""
+    response = client.get("/model-info")
+    if METADATA_PATH.exists():
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, dict)
+        assert data.get("model_name") == "Random Forest Regressor"
+        assert data.get("model_version") == "1.0.0"
+        assert data.get("task") == "regression"
+        assert data.get("target") == "quality"
+        assert "metrics" in data
+        assert "MAE" in data["metrics"]
+        assert "MSE" in data["metrics"]
+        assert "RMSE" in data["metrics"]
+        assert "R2" in data["metrics"]
+        assert "best_parameters" in data
+        assert "dataset" in data
+        assert "training_date" in data
+    else:
+        assert response.status_code == 503
+        data = response.json()
+        assert "detail" in data
+
+
+def test_ai_service_request_id_preserved():
+    """Kiểm tra AI Service bảo toàn và trả lại đúng header X-Request-ID từ Client."""
+    custom_id = "ai-trace-custom-999"
+    response = client.post("/predict", json=VALID_PAYLOAD, headers={"X-Request-ID": custom_id})
+    assert response.headers.get("X-Request-ID") == custom_id
+
+
+def test_ai_service_request_id_auto_generated():
+    """Kiểm tra AI Service tự động sinh X-Request-ID nếu Client không truyền."""
+    response = client.get("/health")
+    assert response.status_code == 200
+    gen_id = response.headers.get("X-Request-ID")
+    assert gen_id is not None
+    assert len(gen_id) > 0
+
+
+def test_ai_service_model_info_request_id():
+    """Kiểm tra endpoint GET /model-info trả lại đúng X-Request-ID."""
+    custom_id = "info-trace-001"
+    response = client.get("/model-info", headers={"X-Request-ID": custom_id})
+    assert response.headers.get("X-Request-ID") == custom_id
+
+
 if __name__ == "__main__":
     import sys
     if hasattr(sys.stdout, "reconfigure"):
@@ -94,6 +142,8 @@ if __name__ == "__main__":
     print("[PASS] test_root: GET / thanh cong")
     test_health()
     print("[PASS] test_health: GET /health tra ve status ok")
+    test_model_info()
+    print("[PASS] test_model_info: GET /model-info tra ve thong tin mo hinh hop le")
     test_predict_missing_feature()
     print("[PASS] test_predict_missing_feature: Chan request thieu feature (422)")
     test_predict_invalid_data_type()
@@ -102,4 +152,11 @@ if __name__ == "__main__":
     print("[PASS] test_predict_extra_feature: Chan request chua feature la (422)")
     test_predict_model_status()
     print("[PASS] test_predict_model_status: Xu ly dung khi chua co model.joblib (503 Service Unavailable)")
+    test_ai_service_request_id_preserved()
+    print("[PASS] test_ai_service_request_id_preserved: X-Request-ID duoc bao toan trong response")
+    test_ai_service_request_id_auto_generated()
+    print("[PASS] test_ai_service_request_id_auto_generated: Tu sinh X-Request-ID khi client khong truyen")
+    test_ai_service_model_info_request_id()
+    print("[PASS] test_ai_service_model_info_request_id: X-Request-ID hoat dong tren /model-info")
     print("=== TAT CA CAC TEST DEU HOAN THANH XUAT SAC ===")
+

@@ -1,0 +1,29 @@
+{
+  "endpoint": "http://127.0.0.1:5000/api/predict",
+  "concurrency": 20,
+  "duration_configured_s": 60.0,
+  "duration_actual_s": 60.34,
+  "warmup_requests": 10,
+  "total_requests": 1773,
+  "successful_requests": 1773,
+  "failed_requests": 0,
+  "error_rate_pct": 0.0,
+  "throughput_req_per_s": 29.39,
+  "latency_p50_ms": 626.88,
+  "latency_p90_ms": 811.89,
+  "latency_p95_ms": 851.71,
+  "latency_p99_ms": 1242.59,
+  "latency_min_ms": 117.73,
+  "latency_max_ms": 6422.88,
+  "latency_mean_ms": 641.52,
+  "sample_request_ids": [
+    "load-0-c3b59ee1e8ee",
+    "load-1-1ea2111c1841",
+    "load-2-3540b07a9fe4",
+    "load-3-d043cff5852a",
+    "load-4-f4e378d75814"
+  ],
+  "status_distribution": {
+    "200": 1773
+  }
+}

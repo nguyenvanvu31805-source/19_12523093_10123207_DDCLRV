@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dự đoán chất lượng rượu vang | Wine Quality Prediction</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-icon">🍷</div>
+      <h1>Dự đoán chất lượng rượu vang</h1>
+      <p class="subtitle">Đồ án Machine Learning - Bài toán hồi quy (Red Wine Quality Regression)</p>
+      <div class="flow-badge">
+        <span>Frontend</span> &rarr; <span>Backend (Port 5000)</span> &rarr; <span>AI Service (Port 8000)</span> &rarr; <span>Random Forest Model</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-card">
+      <div class="card-header">
+        <h2>Nhập 11 thông số hóa lý của rượu vang</h2>
+        <button type="button" id="btn-sample" class="btn-secondary" title="Nạp lại bộ 11 giá trị mẫu chuẩn">
+          🔄 Điền giá trị mẫu
+        </button>
+      </div>
+
+      <form id="prediction-form" class="wine-form">
+        <div class="form-grid">
+          <!-- 1. fixed acidity -->
+          <div class="form-group">
+            <label for="fixed_acidity">
+              1. Độ axit cố định <span class="en-label">(fixed acidity)</span>
+            </label>
+            <input type="number" step="any" id="fixed_acidity" name="fixed acidity" required value="7.4">
+            <span class="unit">g(tartaric acid)/dm³</span>
+          </div>
+
+          <!-- 2. volatile acidity -->
+          <div class="form-group">
+            <label for="volatile_acidity">
+              2. Độ axit bay hơi <span class="en-label">(volatile acidity)</span>
+            </label>
+            <input type="number" step="any" id="volatile_acidity" name="volatile acidity" required value="0.7">
+            <span class="unit">g(acetic acid)/dm³</span>
+          </div>
+
+          <!-- 3. citric acid -->
+          <div class="form-group">
+            <label for="citric_acid">
+              3. Axit xitric <span class="en-label">(citric acid)</span>
+            </label>
+            <input type="number" step="any" id="citric_acid" name="citric acid" required value="0.0">
+            <span class="unit">g/dm³</span>
+          </div>
+
+          <!-- 4. residual sugar -->
+          <div class="form-group">
+            <label for="residual_sugar">
+              4. Lượng đường dư <span class="en-label">(residual sugar)</span>
+            </label>
+            <input type="number" step="any" id="residual_sugar" name="residual sugar" required value="1.9">
+            <span class="unit">g/dm³</span>
+          </div>
+
+          <!-- 5. chlorides -->
+          <div class="form-group">
+            <label for="chlorides">
+              5. Hàm lượng muối clorua <span class="en-label">(chlorides)</span>
+            </label>
+            <input type="number" step="any" id="chlorides" name="chlorides" required value="0.076">
+            <span class="unit">g(sodium chloride)/dm³</span>
+          </div>
+
+          <!-- 6. free sulfur dioxide -->
+          <div class="form-group">
+            <label for="free_sulfur_dioxide">
+              6. Lưu huỳnh điôxít tự do <span class="en-label">(free sulfur dioxide)</span>
+            </label>
+            <input type="number" step="any" id="free_sulfur_dioxide" name="free sulfur dioxide" required value="11">
+            <span class="unit">mg/dm³</span>
+          </div>
+
+          <!-- 7. total sulfur dioxide -->
+          <div class="form-group">
+            <label for="total_sulfur_dioxide">
+              7. Tổng lưu huỳnh điôxít <span class="en-label">(total sulfur dioxide)</span>
+            </label>
+            <input type="number" step="any" id="total_sulfur_dioxide" name="total sulfur dioxide" required value="34">
+            <span class="unit">mg/dm³</span>
+          </div>
+
+          <!-- 8. density -->
+          <div class="form-group">
+            <label for="density">
+              8. Tỷ trọng <span class="en-label">(density)</span>
+            </label>
+            <input type="number" step="any" id="density" name="density" required value="0.9978">
+            <span class="unit">g/cm³</span>
+          </div>
+
+          <!-- 9. pH -->
+          <div class="form-group">
+            <label for="pH">
+              9. Độ pH <span class="en-label">(pH)</span>
+            </label>
+            <input type="number" step="any" id="pH" name="pH" required value="3.51">
+            <span class="unit">Thang đo pH (0 - 14)</span>
+          </div>
+
+          <!-- 10. sulphates -->
+          <div class="form-group">
+            <label for="sulphates">
+              10. Hàm lượng sunfat <span class="en-label">(sulphates)</span>
+            </label>
+            <input type="number" step="any" id="sulphates" name="sulphates" required value="0.56">
+            <span class="unit">g(potassium sulphate)/dm³</span>
+          </div>
+
+          <!-- 11. alcohol -->
+          <div class="form-group">
+            <label for="alcohol">
+              11. Nồng độ cồn <span class="en-label">(alcohol)</span>
+            </label>
+            <input type="number" step="any" id="alcohol" name="alcohol" required value="9.4">
+            <span class="unit">% theo thể tích</span>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" id="btn-submit" class="btn-primary">
+            <span id="btn-text">Dự đoán chất lượng</span>
+            <span id="btn-spinner" class="spinner" style="display: none;"></span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Vùng hiển thị thông báo lỗi -->
+      <div id="error-box" class="alert alert-error" style="display: none;">
+        <span class="alert-icon">⚠️</span>
+        <span id="error-message"></span>
+      </div>
+
+      <!-- Vùng hiển thị kết quả dự đoán -->
+      <div id="result-box" class="result-card" style="display: none;">
+        <div class="result-badge">KẾT QUẢ DỰ ĐOÁN</div>
+        <div class="result-score-container">
+          <div class="result-score" id="score-display">0.00</div>
+          <div class="result-text" id="score-text">Điểm chất lượng dự đoán: 0.00</div>
+        </div>
+        <div class="result-details">
+          <div class="detail-item">
+            <span class="detail-label">Thang điểm:</span>
+            <span class="detail-value">Từ 3 (thấp) đến 8 (cao)</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Mô hình AI:</span>
+            <span class="detail-value">Random Forest Regressor (Tuned)</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Giá trị gốc từ AI:</span>
+            <span class="detail-value" id="raw-score">0.0000</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Đồ án Machine Learning cơ bản &bull; Red Wine Quality Regression</p>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+services:
+  ai-service:
+    build:
+      context: .
+      dockerfile: ai-models/service/Dockerfile
+    image: wine-quality-ai-service
+    container_name: wine-ai-service
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: app/backend/Dockerfile
+    image: wine-quality-backend
+    container_name: wine-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - AI_SERVICE_URL=http://ai-service:8000
+    depends_on:
+      ai-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    image: nginx:alpine
+    container_name: wine-frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./app/frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  default:
+    name: wine-quality-network

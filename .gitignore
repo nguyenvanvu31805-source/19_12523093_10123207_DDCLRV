@@ -50,3 +50,6 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Accidental nested repository copy
+/19_12523093_10123207_DĐCLRV/
